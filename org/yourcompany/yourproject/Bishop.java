@@ -1,7 +1,8 @@
 package org.yourcompany.yourproject;
-
+//Bishop piece class
 public class Bishop extends Piece {
 
+    //importing the image for the bishop piece
     public Bishop(boolean isWhite, int col, int row) {
         super(isWhite, col, row);
         type = Type.BISHOP;
@@ -12,16 +13,12 @@ public class Bishop extends Piece {
             this.image = getImage("resources/sprites/black_bishop.png");
         }
     }
-    
+    //checking if the bishop can move to the target square
     public boolean canMove(int targetCol, int targetRow) {
         if(isWithinBounds(targetCol, targetRow)) {
-            //System.out.println("Bishop moving from (" + col + ", " + row + ") to (" + targetCol + ", " + targetRow + ")");
             if( Math.abs(targetCol - prevCol) == Math.abs(targetRow - prevRow) ) {
-                // A futó csak átlósan léphet
-                System.out.println("Bishop diagonal move detected");
+                // The bishop may only move diagonally
                 if(isValidSquare(targetCol,targetRow) && !pieceIsOnDiagonalPath(targetCol, targetRow)){
-                    
-                    System.out.println("Bishop move valid");
                     return true;
                 }
             }

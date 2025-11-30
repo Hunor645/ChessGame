@@ -14,11 +14,11 @@ import java.util.ArrayList;
 public class GameSave {
 
     private static final String DEFAULT_SAVE = "game_save.json";
-
+    // Save the current game state to the default file
     public static boolean save(GamePanel gp) {
         return save(gp, DEFAULT_SAVE);
     }
-
+    // Save the current game state to the specified file
     public static boolean save(GamePanel gp, String path) {
         try {
             StringBuilder sb = new StringBuilder();
@@ -53,17 +53,17 @@ public class GameSave {
             return false;
         }
     }
-
+    // Load the game state from the default file if it exists
     public static boolean loadIfExists(GamePanel gp) {
         return loadIfExists(gp, DEFAULT_SAVE);
     }
-
+    // Load the game state from the specified file if it exists
     public static boolean loadIfExists(GamePanel gp, String path) {
         File f = new File(path);
         if (!f.exists()) return false;
         return load(gp, path);
     }
-
+    // Load the game state from the specified file
     public static boolean load(GamePanel gp, String path) {
         try {
             File f = new File(path);
@@ -139,14 +139,14 @@ public class GameSave {
             return false;
         }
     }
-
+    // Helper class to hold piece data during loading
     private static class PieceData {
         String type;
         boolean isWhite;
         int col, row, prevCol, prevRow;
         boolean moved, twoStepped;
     }
-
+    // Split JSON array of objects into individual object strings
     private static ArrayList<String> splitObjects(String arr) {
         ArrayList<String> out = new ArrayList<>();
         int depth = 0;
@@ -165,7 +165,7 @@ public class GameSave {
         }
         return out;
     }
-
+    // Parse a single piece JSON object into PieceData
     private static PieceData parsePiece(String obj) {
         PieceData pd = new PieceData();
         String s = obj.trim();

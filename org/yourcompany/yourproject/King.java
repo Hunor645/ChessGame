@@ -11,18 +11,16 @@ public class King extends Piece {
             this.image = getImage("resources/sprites/black_king.png");
         }
     }
-
+    //checking if the king can move to the target square
     public boolean canMove(int targetCol, int targetRow) {
         if(isWithinBounds(targetCol, targetRow)) {
-            //System.out.println("King moving from (" + prevCol + ", " + prevRow + ") to (" + targetCol + ", " + targetRow + ")");
             if( Math.abs(targetCol - prevCol) + Math.abs(targetRow - prevRow) == 1 || Math.abs(targetCol - prevCol) * Math.abs(targetRow - prevRow) == 1){
-                // A király csak egy mezőt léphet bármely irányba
+                // The king may move exactly one square in any direction
                 if(isValidSquare(targetCol,targetRow)){
                     return true;
                 }
             }
             if(moved == false && targetCol == prevCol + 2 && targetRow == prevRow && pieceIsOnStraightPath(targetCol, targetRow) == false){
-                 System.out.println("King attempting kingside castling");   
                 for(Piece piece : GamePanel.simPieces){
                     if(piece.col == prevCol + 3 && piece.row == targetRow && piece.moved == false){
                         GamePanel.castlingPiece = piece;
@@ -33,7 +31,6 @@ public class King extends Piece {
 
             if(moved == false && targetCol == prevCol-2 && targetRow == prevRow && pieceIsOnStraightPath(targetCol, targetRow) == false){
                 Piece p[] = new Piece[2];
-                    System.out.println("King attempting queenside castling");
                 for(Piece piece : GamePanel.simPieces){
                     if(piece.col == prevCol - 3 && piece.row == targetRow){
                         p[0] = piece;
@@ -41,11 +38,12 @@ public class King extends Piece {
                     if(piece.col == prevCol -4 && piece.row == targetRow){
                         p[1] = piece;
                     }
-
-                    if(p[0] == null && p[1] != null && p[1].moved == false){
-                        GamePanel.castlingPiece = p[1];
-                        return true;
-                    }
+                }
+                // After the loop: if the intermediate square is empty (p[0] == null)
+                // and the rook (p[1]) exists and has not moved yet, castling is allowed
+                if(p[0] == null && p[1] != null && p[1].moved == false){
+                    GamePanel.castlingPiece = p[1];
+                    return true;
                 }
                
             

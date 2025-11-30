@@ -1,7 +1,7 @@
 package org.yourcompany.yourproject;
 
 import java.awt.event.MouseAdapter;
-
+// Mouse class to handle mouse events
 public class Mouse extends MouseAdapter{
     int x,y;
     public boolean pressed;

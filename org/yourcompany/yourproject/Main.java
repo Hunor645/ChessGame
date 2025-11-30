@@ -5,11 +5,9 @@
 package org.yourcompany.yourproject;
 
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.WindowConstants;
 
-/**
- *
- * @author Hunor nem admin
- */
 public class Main {
     private static JFrame window;
     private static GamePanel gamePanel;
@@ -17,36 +15,76 @@ public class Main {
 
     public static void main(String[] args) {
         window = new JFrame("Chess Game");
-        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         window.setResizable(false);
         window.setSize(GamePanel.WIDTH, GamePanel.HEIGHT);
 
-        // Menü panel
+        // Main menu panel for starting/loading/saving games
         menuPanel = new Menu(new Menu.MenuListener() {
             @Override
             public void onStartGame() {
-                startGame();
+                startGame(false);
+            }
+
+            @Override
+            public void onStartGameWithAI() {
+                startGame(true);
+            }
+
+            @Override
+            public void onSaveGame() {
+                if (gamePanel != null) {
+                    SaveLoadDialog dialog = new SaveLoadDialog(window, true);
+                    dialog.setVisible(true);
+                    int slot = dialog.getSelectedSlot();
+                    if (slot >= 0) {
+                        SaveManager.saveToSlot(gamePanel, slot);
+                        JOptionPane.showMessageDialog(window, "Save successful!");
+                    }
+                }
+            }
+
+            @Override
+            public void onLoadGame() {
+                SaveLoadDialog dialog = new SaveLoadDialog(window, false);
+                dialog.setVisible(true);
+                int slot = dialog.getSelectedSlot();
+                if (slot >= 0) {
+                    window.remove(menuPanel);
+                    gamePanel = new GamePanel();
+                    
+                    // Set listener to return to menu on ESC or MENU button click
+                    gamePanel.setGamePanelListener(new GamePanel.GamePanelListener() {
+                        @Override
+                        public void onReturnToMenu() {
+                            gamePanel.gameThread = null;
+                            window.remove(gamePanel);
+                            window.add(menuPanel);
+                            window.revalidate();
+                            window.repaint();
+                            menuPanel.requestFocusInWindow();
+                        }
+                    });
+                    
+                    window.add(gamePanel);
+                    window.revalidate();
+                    window.repaint();
+                    
+                    // Request focus for input handling
+                    gamePanel.requestFocusInWindow();
+                    
+                    // Load the game state from the selected save slot
+                    SaveManager.loadFromSlot(gamePanel, slot);
+                    
+                    // Launch the game thread
+                    gamePanel.LaunchGameThread();
+                    JOptionPane.showMessageDialog(window, "Load successful!");
+                }
             }
 
             @Override
             public void onExit() {
                 System.exit(0);
-            }
-
-            @Override
-            public void onSave() {
-                if (gamePanel != null) {
-                    GameSave.save(gamePanel);
-                }
-            }
-
-            @Override
-            public void onLoad() {
-                // If no game running, start one first
-                if (gamePanel == null) {
-                    startGame();
-                }
-                GameSave.loadIfExists(gamePanel);
             }
         });
 
@@ -55,17 +93,38 @@ public class Main {
         window.setVisible(true);
     }
 
-    private static void startGame() {
-        // Menü eltávolítása, játék panel hozzáadása
+    private static void startGame(boolean withAI) {
         window.remove(menuPanel);
         
         gamePanel = new GamePanel();
+        gamePanel.setAIMode(withAI);
+        
+        // Set up ESC key in GamePanel to return to the main menu
+        gamePanel.setGamePanelListener(new GamePanel.GamePanelListener() {
+            @Override
+            public void onReturnToMenu() {
+                // Stop the game thread
+                gamePanel.gameThread = null;
+                
+                // Return to menu
+                window.remove(gamePanel);
+                window.add(menuPanel);
+                window.revalidate();
+                window.repaint();
+                
+                // Give focus back to the menu for input
+                menuPanel.requestFocusInWindow();
+            }
+        });
+        
         window.add(gamePanel);
         window.revalidate();
         window.repaint();
         
+        // Give keyboard focus to the GamePanel for input handling
+        gamePanel.requestFocusInWindow();
+        
         gamePanel.LaunchGameThread();
-        // Mentés a kilépéskor: ha a program bezárul, mentsük az aktuális állást
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 GameSave.save(gamePanel);

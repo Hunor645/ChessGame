@@ -2,11 +2,13 @@ package org.yourcompany.yourproject;
 
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.awt.Color;
+import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 
 
-
+//Piece class to represent a chess piece
 public class Piece {
     public Type type;   
     public BufferedImage image;
@@ -33,18 +35,48 @@ public class Piece {
     
         String fullPath = imagePath; 
     
-        // a megbízható működéshez:
+        // For robust behavior, ensure the resource path starts with a leading slash
         if (!imagePath.startsWith("/")) {
             fullPath = "/" + imagePath; 
         }
 
-        try {
-            // Használd a Piece osztályt a betöltéshez, így biztosan a megfelelő classpath-on keres:
-            img = ImageIO.read(Piece.class.getResourceAsStream(fullPath));
-
+        // Try to load the resource stream first so we can handle missing resources gracefully
+        try (InputStream is = Piece.class.getResourceAsStream(fullPath)) {
+            if (is == null) {
+                System.err.println("ERROR: Image not found on classpath: " + fullPath);
+                // Try to load from the source resources folder as fallback (useful when running from IDE)
+                try (java.io.InputStream fis = new java.io.FileInputStream("src/main/resources" + fullPath)) {
+                    img = ImageIO.read(fis);
+                    if (img != null) return img;
+                } catch (Exception ex) {
+                    // ignore, create placeholder below
+                }
+                // Create a simple placeholder image so the game can continue running
+                int size = Board.SQUARE_SIZE > 0 ? Board.SQUARE_SIZE : 64;
+                BufferedImage placeholder = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = placeholder.createGraphics();
+                g.setColor(Color.DARK_GRAY);
+                g.fillRect(0, 0, size, size);
+                g.setColor(Color.RED);
+                g.drawLine(0, 0, size, size);
+                g.drawLine(size, 0, 0, size);
+                g.dispose();
+                return placeholder;
+            }
+            img = ImageIO.read(is);
         } catch (Exception e) {
-            System.err.println("HIBA: Nem található a kép: " + fullPath);
+            System.err.println("ERROR: Failed to load image: " + fullPath);
             e.printStackTrace();
+            int size = Board.SQUARE_SIZE > 0 ? Board.SQUARE_SIZE : 64;
+            BufferedImage placeholder = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = placeholder.createGraphics();
+            g.setColor(Color.DARK_GRAY);
+            g.fillRect(0, 0, size, size);
+            g.setColor(Color.RED);
+            g.drawLine(0, 0, size, size);
+            g.drawLine(size, 0, 0, size);
+            g.dispose();
+            return placeholder;
         }
         return img;
     }
@@ -85,7 +117,7 @@ public class Piece {
     }
 
     public void resetPosition(){
-        // A bábu visszakerül az egér-nyomva tartás előtti helyére
+        // Move the piece back to the position it had before the drag started
         this.col = this.prevCol; 
         this.row = this.prevRow;
         this.xPos = getX(this.col);
@@ -93,7 +125,7 @@ public class Piece {
     }
 
     public boolean canMove(int targetCol, int targetRow) {
-        // Alapértelmezett viselkedés: minden lépés engedélyezett
+        // Default behavior: allow every move. Subclasses override with real rules.
         return true;
     }
     public boolean isWithinBounds(int targetCol, int targetRow) {
@@ -111,16 +143,18 @@ public class Piece {
     public boolean isValidSquare(int targetCol, int targetRow) {
         hittingPiece = getHittingPiece(targetCol, targetRow);
         if (hittingPiece == null) {
-            return true; // Üres mező
+            return true; // Empty square
         } else {
             if(hittingPiece.isWhite != this.isWhite){
                 return true;
             } else {
-                hittingPiece = null; // Csak akkor érvényes, ha ellenfél bábuja van ott
+                // Not a valid target if a friendly piece occupies the square
+                hittingPiece = null;
             }
         }
         return false;
     }
+    // Check if there are pieces on the straight path to the target square
     public boolean pieceIsOnStraightPath(int targetCol, int targetRow) {
         for(int c = prevCol-1; c > targetCol; c--) {
             for(Piece piece : GamePanel.simPieces) {

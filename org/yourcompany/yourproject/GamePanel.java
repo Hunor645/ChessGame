@@ -1,4 +1,3 @@
-
 package org.yourcompany.yourproject;
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -7,6 +6,8 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -17,10 +18,11 @@ public class GamePanel extends JPanel implements Runnable  {
     public static final int WIDTH = 1200;
     public static final int HEIGHT = 900;
     final int FPS = 60;
-    Thread gameThread;
+    public Thread gameThread;
     Board board = new Board();
     Mouse mouse = new Mouse();
 
+    // Static lists to hold the pieces on the board
     public static ArrayList<Piece> pieces = new ArrayList<>();
     public static ArrayList<Piece> simPieces = new ArrayList<>();
     ArrayList<Piece> capturedPieces = new ArrayList<>();
@@ -28,9 +30,18 @@ public class GamePanel extends JPanel implements Runnable  {
     Piece activePiece , checkingPiece = null;
     public static Piece castlingPiece = null;
 
-    public static final int WHITE = 0;
-    public static final int BLACK = 1;
     boolean currentPlayer = true; //true = white, false = black
+    
+    boolean aiMode = false;  // Whether AI opponent is enabled
+    ChessAI ai = null;  // The AI instance when enabled
+
+    boolean isPaused = false;  // Pause state flag
+
+    // Listener interface to notify when returning to menu
+    public interface GamePanelListener {
+        void onReturnToMenu();
+    }
+    private GamePanelListener listener;
 
     boolean canMove;
     boolean validSquare;
@@ -41,6 +52,21 @@ public class GamePanel extends JPanel implements Runnable  {
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH,HEIGHT));
         setBackground(Color.black);
+        setFocusable(true);
+        // Ensure static game state is reset when creating a new GamePanel instance
+        synchronized (pieces) {
+            pieces.clear();
+        }
+        synchronized (simPieces) {
+            simPieces.clear();
+        }
+        castlingPiece = null;
+        currentPlayer = true;
+        activePiece = null;
+        gameOver = false;
+        stealMate = false;
+        promotion = false;
+        
         // Only add listeners if they aren't already registered (prevent duplicate registration)
         if (Arrays.stream(getMouseListeners()).noneMatch(l -> l == mouse)) {
             addMouseListener(mouse);
@@ -48,18 +74,75 @@ public class GamePanel extends JPanel implements Runnable  {
         if (Arrays.stream(getMouseMotionListeners()).noneMatch(l -> l == mouse)) {
             addMouseMotionListener(mouse);
         }
+        
+        // Keyboard listener for pause, save, and menu return
+        addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_P) {
+                    isPaused = !isPaused;
+                }
+                if (e.getKeyCode() == KeyEvent.VK_S && (e.getModifiers() & java.awt.event.InputEvent.CTRL_MASK) != 0) {
+                    // Ctrl+S: Open save dialog
+                    SaveLoadDialog dialog = new SaveLoadDialog(
+                        (javax.swing.JFrame) javax.swing.SwingUtilities.getWindowAncestor(GamePanel.this),
+                        true
+                    );
+                    dialog.setVisible(true);
+                    int slot = dialog.getSelectedSlot();
+                    if (slot >= 0) {
+                        SaveManager.saveToSlot(GamePanel.this, slot);
+                        javax.swing.JOptionPane.showMessageDialog(GamePanel.this, "Save successful!");
+                    }
+                }
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    // ESC: Return to menu
+                    if (listener != null) {
+                        listener.onReturnToMenu();
+                    }
+                }
+            }
+        });
 
-        //Prom();
+        // Mouse listener for menu button click
+        addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                // Check whether the click occurred inside the MENU button area
+                int buttonX = WIDTH - 300;
+                int buttonY = 15;
+                int buttonWidth = 110;
+                int buttonHeight = 45;
+                
+                if (e.getX() >= buttonX && e.getX() <= buttonX + buttonWidth &&
+                    e.getY() >= buttonY && e.getY() <= buttonY + buttonHeight) {
+                    if (listener != null) {
+                        listener.onReturnToMenu();
+                    }
+                }
+            }
+        });
+
+        // Initialize pieces for a new game
         setPieces();
         copyPieces(pieces, simPieces);
-        // Ha van mentés, töltsük be és folytassuk onnan
-        GameSave.loadIfExists(this);
     }   
 
     public void LaunchGameThread(){
         gameThread = new Thread(this);
         gameThread.start();
         
+    }
+    
+    public void setAIMode(boolean aiEnabled) {
+        this.aiMode = aiEnabled;
+        if (aiEnabled) {
+            this.ai = new ChessAI(false);  // create AI (black)
+        }
+    }
+    
+    public void setGamePanelListener(GamePanelListener listener) {
+        this.listener = listener;
     }
 
     public void Prom(){
@@ -73,11 +156,11 @@ public class GamePanel extends JPanel implements Runnable  {
     public void setPieces(){
         pieces.add(new Rook(true,0,7));
         pieces.add(new Rook(true,7,7));
-       /* pieces.add(new Knight(true,1,7));
+        pieces.add(new Knight(true,1,7));
         pieces.add(new Knight(true,6,7));
         pieces.add(new Bishop(true,5,7));
         pieces.add(new Bishop(true,2,7));
-        pieces.add(new Queen(true,3,7));*/
+        pieces.add(new Queen(true,3,7));
         pieces.add(new King(true,4,7));
         pieces.add(new Pawn(true,0,6));
         pieces.add(new Pawn(true,1,6));
@@ -106,6 +189,8 @@ public class GamePanel extends JPanel implements Runnable  {
         pieces.add(new Pawn(false,6,1));
         pieces.add(new Pawn(false,7,1));
     }
+
+    // Utility method to copy pieces from one list to another
     private void copyPieces(ArrayList<Piece> source, ArrayList<Piece> destination){
         synchronized(destination) {
             destination.clear();
@@ -115,6 +200,7 @@ public class GamePanel extends JPanel implements Runnable  {
         }
     }
 
+    // Game loop to update and repaint the game panel
     @Override
     public void run(){
         double drawInterval = 1000000000/FPS;
@@ -134,14 +220,14 @@ public class GamePanel extends JPanel implements Runnable  {
             }
         }
     }
-
+    // Update game state
     private void update(){
         if(promotion){
            
             promoting();
         }
+        // Only process game updates if not paused, not in promotion, and game is ongoing
         else if(!gameOver && !stealMate){
-            // System.out.println("update");
             if(mouse.pressed){
                 if(activePiece == null){
                     for(Piece p : simPieces){
@@ -157,11 +243,10 @@ public class GamePanel extends JPanel implements Runnable  {
 
             }
             if(!mouse.pressed){
-               // System.out.println("Mouse released");
+               // Mouse released: finalize or revert the tentative move
                 if(activePiece != null){
-                    System.out.println("Finalizing move for piece: " + activePiece.type + " to (" + activePiece.col + ", " + activePiece.row + ")");
                     
-                    // ELLENŐRZÉS: Csak érvényes lépés esetén véglegesítjük a lépést!
+                    // Validation: only finalize the move if the simulated target square is valid
                     if(validSquare){ 
                         // Véglegesítés
                         copyPieces(simPieces, pieces);
@@ -170,16 +255,13 @@ public class GamePanel extends JPanel implements Runnable  {
                             castlingPiece.updatePosition();
                         }
                         if(isKinginCheck() && isCheckmate()){
-                            System.out.println("King is in check!");
                             gameOver = true;
 
                         }else if(isStaleMate() && !isKinginCheck()){
-                            System.out.println("Stalemate!");
                             stealMate = true;
                         }
                         else{
                             if(canPromote(activePiece)){
-                                System.out.println("Promotion available!");
                                 promotion = true;
                             }
                             else {
@@ -192,8 +274,8 @@ public class GamePanel extends JPanel implements Runnable  {
                        
                     } else {
                         copyPieces(pieces, simPieces);
-                        // Lépés visszaállítása
-                        activePiece.resetPosition(); // <--- HÍVJA AZ ÚJ resetPosition()-t!
+                        // Revert piece back to its previous coordinates
+                        activePiece.resetPosition();
                         activePiece = null;
                     
                     }                                                     
@@ -203,11 +285,18 @@ public class GamePanel extends JPanel implements Runnable  {
         
     }
     
+/**
+     * Simulate moving the currently active piece to the mouse position.
+     *
+     * Copies the real pieces into simPieces, applies the tentative move,
+     * resolves captures and castling, and then checks whether the move
+     * would leave the current player's king in check. Results are stored
+     * in canMove and validSquare.
+     */
     public void simulate(){
 
         canMove = false;
         validSquare = false;
-        System.out.println("Simulating move...");
         copyPieces(pieces, simPieces);
 
         if(castlingPiece != null){
@@ -215,7 +304,6 @@ public class GamePanel extends JPanel implements Runnable  {
             castlingPiece.xPos = castlingPiece.getX(castlingPiece.col);
             castlingPiece = null;
         }
-        System.out.println("Simulating move for piece: " + activePiece.type + " from (" + activePiece.prevCol + ", " + activePiece.prevRow + ") to (" + activePiece.getCol(mouse.x) + ", " + activePiece.getRow(mouse.y) + ")");
         //copyPieces(pieces, simPieces);
         activePiece.col = activePiece.getCol(mouse.x);
         activePiece.row = activePiece.getRow(mouse.y);
@@ -225,22 +313,17 @@ public class GamePanel extends JPanel implements Runnable  {
         if(activePiece.canMove(activePiece.col, activePiece.row)){
             validSquare = true;
             canMove = true;
-            System.out.println("Hitting piece " + activePiece.hittingPiece);
-            
             if(activePiece.hittingPiece != null){
-                //capture
+                // Capture the piece on the simulated board
                 simPieces.remove(activePiece.hittingPiece.getIndex());
             }
-            System.out.println("After capture, simPieces size: " + simPieces.size());
             
         
             checkCastling();
 
-            System.out.println("Simulated move to (" + activePiece.col + ", " + activePiece.row + ")");
             if(isIllegal(activePiece) || opponentCanCaptureKing()){
                 validSquare = false;
             }
-            System.out.println("Move valid: " + validSquare);
             if(activePiece.col == activePiece.prevCol && activePiece.row == activePiece.prevRow){
                 validSquare = false;
             }
@@ -250,16 +333,16 @@ public class GamePanel extends JPanel implements Runnable  {
     private void checkCastling(){
         if(castlingPiece != null){
             if(castlingPiece.col == 0){
-                //király oldal
+                // Kingside: move rook three squares towards the king
                 castlingPiece.col = castlingPiece.col +3;
             } else if(castlingPiece.col ==7){
-                //bástya oldal
+                // Queenside: move rook two squares towards the king
                 castlingPiece.col -=2;
             }
             castlingPiece.xPos = castlingPiece.getX(castlingPiece.col);
         }
     }
-
+    // Change the current player and reset twoStepped flags
     private void changePlayer(){
         if(currentPlayer == true){
             currentPlayer = false;
@@ -279,6 +362,20 @@ public class GamePanel extends JPanel implements Runnable  {
             }
         }
         activePiece = null;
+        
+        // Let the AI play a move when AI mode is enabled
+        if (aiMode && !currentPlayer) {
+            // AI controls the black side (false), so it moves when currentPlayer is false
+            try {
+                Thread.sleep(500);  // Small delay so the human can see the move
+                if (ai != null) {
+                    ai.makeMove(this);
+                    changePlayer();  // Hand control back to White
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private boolean canPromote(Piece piece){
@@ -294,14 +391,16 @@ public class GamePanel extends JPanel implements Runnable  {
         }
         return false;
     }
+    /**
+     * Handle pawn promotion: lets the user choose a replacement piece from the
+     * promotedPieces list and applies that choice to both simPieces and pieces.
+     */
     private void promoting(){
-        System.err.println("Promoting...");
         if(mouse.pressed){
             for(Piece p : promotedPieces){
                 if(mouse.x / Board.SQUARE_SIZE == p.col && mouse.y / Board.SQUARE_SIZE == p.row){
                        //promote
                        simPieces.remove(activePiece.getIndex());
-                       System.out.println("Chosen piece: " + p.type);
                        switch(p.type){
                            case QUEEN -> simPieces.add(new Queen(activePiece.isWhite, activePiece.col, activePiece.row));
                            case ROOK -> simPieces.add(new Rook(activePiece.isWhite, activePiece.col, activePiece.row));
@@ -309,18 +408,16 @@ public class GamePanel extends JPanel implements Runnable  {
                            case KNIGHT -> simPieces.add(new Knight(activePiece.isWhite, activePiece.col, activePiece.row));
                        }
                        
-                       System.out.println("Remove ");
                        copyPieces(simPieces, pieces);
                        activePiece = null;
                        promotion = false;
-                       System.out.println("Promoted to " + p.type);
                        changePlayer();
                        break;
                 }
             }
         }
     }
-
+    // Check if moving the piece would leave its own king in check
     private boolean isIllegal(Piece king){
         if(king.type == Type.KING){
             ArrayList<Piece> snapshot = new ArrayList<>(simPieces);
@@ -332,6 +429,7 @@ public class GamePanel extends JPanel implements Runnable  {
         }
         return false;
     }
+    // Check if the current player's king is in check
     private boolean isKinginCheck(){
         Piece king = getKing(true);
         if(activePiece.canMove(king.col, king.row)){
@@ -344,7 +442,7 @@ public class GamePanel extends JPanel implements Runnable  {
          
         return false;   
     }
-
+    // Get the king piece for the specified side
     private Piece getKing(boolean opponent){
         Piece king = null;
         for(Piece p : simPieces){
@@ -361,7 +459,7 @@ public class GamePanel extends JPanel implements Runnable  {
         }
         return null;
     }
-
+    // Check if the opponent can capture the current player's king
     public synchronized boolean opponentCanCaptureKing(){
         Piece king  = getKing(false);
         // Create a snapshot to avoid ConcurrentModificationException during iteration
@@ -373,6 +471,14 @@ public class GamePanel extends JPanel implements Runnable  {
         }
         return false;
     }
+    /**
+     * Determine whether the side to move is checkmated.
+     *
+     * Assumes activePiece/checkingPiece describe the current check.
+     * First checks if the king has any legal escape square. If not, it then
+     * scans the line of attack between the checking piece and the king to see
+     * whether any friendly piece can block the attack or capture the attacker.
+     */
     public synchronized boolean isCheckmate(){
         Piece king = getKing(true);
         if(kingCanMove(king)){
@@ -473,6 +579,13 @@ public class GamePanel extends JPanel implements Runnable  {
         return true;
 
     }
+    /**
+     * Determine whether the current position is a stalemate for the side to move.
+     *
+     * Quick-exits if only two pieces remain (king vs king), then checks whether
+     * the king has any legal move, and finally scans all friendly moves to see
+     * if any move avoids leaving the king in check.
+     */
     public synchronized boolean isStaleMate(){
         int count = 0;
          ArrayList<Piece> snapshot = new ArrayList<>(simPieces);
@@ -517,6 +630,10 @@ public class GamePanel extends JPanel implements Runnable  {
         return true;
     }
 
+    /**
+     * Returns true if the given king has at least one legal move to any of the
+     * eight surrounding squares that does not leave it in check.
+     */
     public boolean kingCanMove(Piece king){
         for(int colPlus = -1; colPlus <= 1; colPlus++){
             for(int rowPlus = -1; rowPlus <= 1; rowPlus++){
@@ -531,6 +648,13 @@ public class GamePanel extends JPanel implements Runnable  {
         return false;
     }
 
+    /**
+     * Helper for kingCanMove / isStaleMate.
+     *
+     * Temporarily moves the king by (colPlus, rowPlus), checks if the king
+     * could move there according to its own movement rules and whether the
+     * resulting position would still be legal (king not in check).
+     */
     public synchronized boolean isValidMove(Piece king, int colPlus, int rowPlus){
         boolean isValidMove = false;
 
@@ -552,6 +676,7 @@ public class GamePanel extends JPanel implements Runnable  {
         copyPieces(pieces, simPieces);
         return isValidMove;
     }
+    // Paint the game components
     @Override
     public synchronized void paintComponent(Graphics g){
         super.paintComponent(g);
@@ -615,12 +740,37 @@ public class GamePanel extends JPanel implements Runnable  {
             } else {
                 who = "Black";
             }
-            g2.setColor(Color.CYAN);
+            g2.setColor(Color.RED);
             g2.drawString("Checkmate! Game Over " + who + " wins.", 100, 400);
         }
         if(stealMate){
-            g2.setColor(Color.CYAN);
+            g2.setColor(Color.RED);
             g2.drawString("Stalemate! Game Over. It's a draw.", 100, 400);
         }
+        
+        // Draw the MENU button in the top-right corner
+        int buttonX = WIDTH - 300;
+        int buttonY = 15;
+        int buttonWidth = 110;
+        int buttonHeight = 45;
+        
+        g2.setColor(new Color(80, 80, 80));
+        g2.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+        g2.setColor(Color.YELLOW);
+        g2.setStroke(new java.awt.BasicStroke(3));
+        g2.drawRect(buttonX, buttonY, buttonWidth, buttonHeight);
+        
+        g2.setFont(new Font("Arial", Font.BOLD, 16));
+        g2.setColor(Color.YELLOW);
+        String buttonText = "MENU";
+        java.awt.FontMetrics fm = g2.getFontMetrics();
+        int textX = buttonX + (buttonWidth - fm.stringWidth(buttonText)) / 2;
+        int textY = buttonY + ((buttonHeight - fm.getHeight()) / 2) + fm.getAscent();
+        g2.drawString(buttonText, buttonX + (buttonWidth - fm.stringWidth(buttonText)) / 2, buttonY + ((buttonHeight - fm.getHeight()) / 2) + fm.getAscent());
+        
+        // Helper text describing keyboard shortcuts
+        g2.setFont(new Font("book Antiqua", Font.PLAIN, 14));
+        g2.setColor(Color.LIGHT_GRAY);
+        g2.drawString("P - Pause | Ctrl+S - Save | ESC - Menu", 900, HEIGHT - 10);
     }   
 }

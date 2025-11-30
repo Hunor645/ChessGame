@@ -15,18 +15,17 @@ public class Queen extends Piece {
 
     public boolean canMove(int targetCol, int targetRow) {
         if(isWithinBounds(targetCol, targetRow)) {
-           // System.out.println("Queen moving from (" + col + ", " + row + ") to (" + targetCol + ", " + targetRow + ")");
             if( targetCol == prevCol || targetRow == prevRow ||
                 Math.abs(targetCol - prevCol) == Math.abs(targetRow - prevRow) ) {
-                // A királynő bármilyen irányban léphet
+                // The queen may move in any direction: horizontally, vertically or diagonally
                 if(isValidSquare(targetCol,targetRow)) {
                     if(targetCol == prevCol || targetRow == prevRow) {
-                        // Egyenes vonalú lépés
+                        // Straight-line (rook-style) move
                         if(!pieceIsOnStraightPath(targetCol, targetRow)){
                             return true;
                         }
                     } else {
-                        // Átlós lépés
+                        // Diagonal (bishop-style) move
                         if(!pieceIsOnDiagonalPath(targetCol, targetRow)){
                             return true;
                         }

@@ -12,13 +12,12 @@ public class Knight extends Piece {
             this.image = getImage("resources/sprites/black_knight.png");
         }
     }
-
+    //checking if the knight can move to the target square
     public boolean canMove(int targetCol, int targetRow) {
         if(isWithinBounds(targetCol, targetRow)) {
-            //System.out.println("Knight moving from (" + col + ", " + row + ") to (" + targetCol + ", " + targetRow + ")");
             if( (Math.abs(targetCol - prevCol) == 2 && Math.abs(targetRow - prevRow) == 1) ||
                 (Math.abs(targetCol - prevCol) == 1 && Math.abs(targetRow - prevRow) == 2) ) {
-                // A huszár "L" alakban léphet
+                // The knight moves in an "L" shape (2 by 1 or 1 by 2)
                 if(isValidSquare(targetCol,targetRow)){
                     return true;
                 }

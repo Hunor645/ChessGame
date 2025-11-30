@@ -15,9 +15,8 @@ public class Rook extends Piece {
 
     public boolean canMove(int targetCol, int targetRow) {
         if(isWithinBounds(targetCol, targetRow)) {
-            //System.out.println("Rook moving from (" + col + ", " + row + ") to (" + targetCol + ", " + targetRow + ")");
             if(targetCol == prevCol || targetRow == prevRow) {
-                // A bástya csak egyenes vonalban léphet
+                // The rook may only move in straight lines (horizontal or vertical)
                 if(isValidSquare(targetCol,targetRow) && !pieceIsOnStraightPath(targetCol, targetRow)){
                     return true;
                 }
