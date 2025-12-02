@@ -35,6 +35,7 @@ public class ChessAI {
      * Returns true if a move was made; false otherwise.
      */
     public boolean makeMove(GamePanel gamePanel) {
+        System.out.println("ChessAI: makeMove() called for " + (isWhite?"White":"Black"));
         List<Move> possibleMoves = new ArrayList<>();
         // Create a deep copy of the real pieces into a fresh simulated list so simulation cannot
         // accidentally mutate the real objects. We will assign this list to GamePanel.simPieces
@@ -60,6 +61,7 @@ public class ChessAI {
             if (simPiece.isWhite != isWhite) continue;
             int origCol = simPiece.col;
             int origRow = simPiece.row;
+            
 
             for (int col = 0; col < 8; col++) {
                 for (int row = 0; row < 8; row++) {
@@ -80,6 +82,7 @@ public class ChessAI {
                         GamePanel.simPieces.clear();
                         GamePanel.simPieces.addAll(simCopy);
                     }
+                    //GamePanel.repaint();
 
                     // Find the corresponding simulated piece in this new sim list
                     Piece simPieceLive = findPieceInSimByPositionAndType(origCol, origRow, simPiece.type, simPiece.isWhite);
@@ -136,6 +139,7 @@ public class ChessAI {
         }
         
         if (possibleMoves.isEmpty()) {
+            System.out.println("ChessAI: no legal moves found");
             return false;
         }
         
@@ -156,6 +160,7 @@ public class ChessAI {
             GamePanel.simPieces.clear();
             GamePanel.simPieces.addAll(GamePanel.pieces);
         }
+        System.out.println("ChessAI: moved " + chosen.piece.type + " to " + chosen.piece.col + "," + chosen.piece.row);
         
         // Check whether a pawn promotion is necessary and perform it.
         if (chosen.piece.type == Type.PAWN) {

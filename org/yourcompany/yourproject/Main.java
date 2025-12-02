@@ -1,6 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- */
 
 package org.yourcompany.yourproject;
 
@@ -74,7 +71,16 @@ public class Main {
                     gamePanel.requestFocusInWindow();
                     
                     // Load the game state from the selected save slot
-                    SaveManager.loadFromSlot(gamePanel, slot);
+                    boolean loaded = SaveManager.loadFromSlot(gamePanel, slot);
+                    if (loaded) {
+                        // Evaluate whether the loaded position is already over
+                        gamePanel.evaluateLoadedGameState();
+                        if (gamePanel.gameOver) {
+                            JOptionPane.showMessageDialog(window, "Loaded position is checkmate — game over.");
+                        } else if (gamePanel.stealMate) {
+                            JOptionPane.showMessageDialog(window, "Loaded position is stalemate — game over.");
+                        }
+                    }
                     
                     // Launch the game thread
                     gamePanel.LaunchGameThread();

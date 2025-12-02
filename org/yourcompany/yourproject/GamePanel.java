@@ -200,6 +200,69 @@ public class GamePanel extends JPanel implements Runnable  {
         }
     }
 
+    /**
+     * Evaluate the loaded position for checkmate/stalemate and set
+     * `gameOver`/`stealMate` accordingly so no further moves are allowed.
+     * This should be called after a saved game is loaded into `pieces`/`simPieces`.
+     */
+    public void evaluateLoadedGameState() {
+        // Reset transient state
+        activePiece = null;
+        checkingPiece = null;
+        castlingPiece = null;
+        promotion = false;
+
+        // Ensure simPieces contains the current pieces
+        copyPieces(pieces, simPieces);
+
+        // Find the king for the side to move
+        Piece king = null;
+        for (Piece p : simPieces) {
+            if (p.type == Type.KING && p.isWhite == currentPlayer) {
+                king = p;
+                break;
+            }
+        }
+
+        if (king == null) {
+            // No king found: treat as game over to be safe
+            gameOver = true;
+            stealMate = false;
+            return;
+        }
+        // Find any attacker of the king (checking piece)
+        Piece attacker = null;
+        for (Piece p : new ArrayList<>(simPieces)) {
+            if (p.isWhite != king.isWhite) {
+                if (p.canMove(king.col, king.row)) {
+                    attacker = p;
+                    
+                    break;
+                }
+            }
+        }
+
+        if (attacker != null) {
+            // Use existing checkmate detection which expects activePiece to be the checking piece
+            activePiece = attacker;
+            checkingPiece = attacker;
+            currentPlayer = !currentPlayer;  // Temporarily switch to the side to move
+            boolean checkmate = isCheckmate();
+            currentPlayer = !currentPlayer;  // Switch back after checkmate evaluation
+            gameOver = checkmate;
+            stealMate = false;
+            // Clear activePiece to prevent accidental dragging after load
+            activePiece = null;
+        } else {
+            // No check: check for stalemate
+            gameOver = false;
+            stealMate = isStaleMate();
+        }
+        System.out.println("evaluateLoadedGameState: currentPlayer=" + (currentPlayer?"white":"black") +
+                ", attacker=" + (attacker==null?"none":attacker.type + "@" + attacker.col + "," + attacker.row) +
+                ", gameOver=" + gameOver + ", stalemate=" + stealMate);
+    }
+
     // Game loop to update and repaint the game panel
     @Override
     public void run(){
@@ -225,6 +288,18 @@ public class GamePanel extends JPanel implements Runnable  {
         if(promotion){
            
             promoting();
+            repaint();
+        }
+        // If the game is over (checkmate/stalemate) don't allow any interaction
+        else if (gameOver || stealMate) {
+            // Clear any transient interaction state so no piece stays active
+            activePiece = null;
+            canMove = false;
+            validSquare = false;
+            promotion = false;
+            // reset mouse pressed so release logic won't try to finalize moves
+            if (mouse != null) mouse.pressed = false;
+            return;
         }
         // Only process game updates if not paused, not in promotion, and game is ongoing
         else if(!gameOver && !stealMate){
@@ -255,12 +330,19 @@ public class GamePanel extends JPanel implements Runnable  {
                             castlingPiece.updatePosition();
                         }
                         if(isKinginCheck() && isCheckmate()){
+                            System.out.println("Black is CHECKMATE - White won!");
                             gameOver = true;
 
                         }else if(isStaleMate() && !isKinginCheck()){
+                            System.out.println("Black is in STALEMATE");
                             stealMate = true;
                         }
                         else{
+                            if(isKinginCheck()){
+                                System.out.println("Black is in CHECK");
+                            } else {
+                                System.out.println("Black is safe");
+                            }
                             if(canPromote(activePiece)){
                                 promotion = true;
                             }
@@ -364,13 +446,40 @@ public class GamePanel extends JPanel implements Runnable  {
         activePiece = null;
         
         // Let the AI play a move when AI mode is enabled
+        repaint();
         if (aiMode && !currentPlayer) {
             // AI controls the black side (false), so it moves when currentPlayer is false
             try {
                 Thread.sleep(500);  // Small delay so the human can see the move
                 if (ai != null) {
                     ai.makeMove(this);
-                    changePlayer();  // Hand control back to White
+                    // Update simPieces to match pieces after AI's move
+                    copyPieces(pieces, simPieces);
+                    
+                    // Immediately check if the opponent (white) is in check/checkmate/stalemate after AI's move
+                    currentPlayer = true;  // Switch to white BEFORE checking
+                    
+                    // Check for check
+                    if (isKinginCheck()) {
+                        System.out.println("White is in CHECK");
+                        if (isCheckmate()) {
+                            System.out.println("White is CHECKMATE - AI won!");
+                            gameOver = true;
+                        }
+                    } else if (isStaleMate()) {
+                        System.out.println("White is in STALEMATE");
+                        stealMate = true;
+                    } else {
+                        System.out.println("White is safe");
+                    }
+                    // NOTE: do NOT call changePlayer() here to avoid recursion
+                    // The game loop will call changePlayer() again when white moves, or the game ends
+                    // Ensure the UI updates immediately so the panel shows check/checkmate.
+                    // Use SwingUtilities.invokeLater so repaint runs on the EDT.
+                    javax.swing.SwingUtilities.invokeLater(() -> {
+                        System.out.println("Requesting repaint on EDT after AI move");
+                        repaint();
+                    });
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -432,15 +541,18 @@ public class GamePanel extends JPanel implements Runnable  {
     // Check if the current player's king is in check
     private boolean isKinginCheck(){
         Piece king = getKing(true);
-        if(activePiece.canMove(king.col, king.row)){
-            checkingPiece = activePiece;
-            return true;
+        if (king == null) return false;
+
+        for (Piece p : new ArrayList<>(simPieces)) {
+            if (p.isWhite != king.isWhite) {
+                if (p.canMove(king.col, king.row)) {
+                    checkingPiece = p;
+                    return true;
+                }
+            }
         }
-        else{
-            checkingPiece = null;
-        }
-         
-        return false;   
+        checkingPiece = null;
+        return false;
     }
     // Get the king piece for the specified side
     private Piece getKing(boolean opponent){
@@ -576,6 +688,7 @@ public class GamePanel extends JPanel implements Runnable  {
             }
              
         }
+        currentPlayer = !currentPlayer;
         return true;
 
     }
@@ -680,6 +793,7 @@ public class GamePanel extends JPanel implements Runnable  {
     @Override
     public synchronized void paintComponent(Graphics g){
         super.paintComponent(g);
+       // System.out.println("paintComponent called - currentPlayer=" + currentPlayer + ", gameOver=" + gameOver + ", stealMate=" + stealMate);
         Graphics2D g2 = (Graphics2D)g;
         board.draw(g2);
         // Create a snapshot to avoid ConcurrentModificationException during iteration
@@ -719,15 +833,19 @@ public class GamePanel extends JPanel implements Runnable  {
             }
         }
         else{
-            if(currentPlayer){
+            
+            // Show whose turn it is and whether that side is in check
+            if (currentPlayer) {
+                g2.setColor(Color.WHITE);
                 g2.drawString("White's turn", 840, 750);
-                if((checkingPiece != null && checkingPiece.isWhite == false) || opponentCanCaptureKing()){
+                if (isKinginCheck() || opponentCanCaptureKing()){
                     g2.setColor(Color.RED);
                     g2.drawString("Check!", 840, 700);
                 }
             } else {
+                g2.setColor(Color.WHITE);
                 g2.drawString("Black's turn", 840, 750);
-                if((checkingPiece != null && checkingPiece.isWhite == true) || opponentCanCaptureKing()){
+                if (isKinginCheck() || opponentCanCaptureKing()){
                     g2.setColor(Color.RED);
                     g2.drawString("Check!", 840, 700);
                 }

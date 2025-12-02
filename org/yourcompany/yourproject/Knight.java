@@ -5,8 +5,8 @@ public class Knight extends Piece {
     public Knight(boolean isWhite, int col, int row) {
         super(isWhite, col, row);
         type = Type.KNIGHT;
-
-        if(isWhite == true) {
+       
+        if(isWhite) {
             this.image = getImage("resources/sprites/white_knight.png");
         } else {
             this.image = getImage("resources/sprites/black_knight.png");
